@@ -625,7 +625,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                    boolean evict) {
         Node<K,V>[] tab; Node<K,V> p; int n, i;
         if ((tab = table) == null || (n = tab.length) == 0)
-            n = (tab = resize()).length;
+            n = (tab = resize()).length; // 先重新算大小，然后再计算长度
         if ((p = tab[i = (n - 1) & hash]) == null)
             tab[i] = newNode(hash, key, value, null);
         else {
@@ -636,11 +636,13 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             else if (p instanceof TreeNode)
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
             else {
+                ////循环链表，找到链表末尾插入元素
                 for (int binCount = 0; ; ++binCount) {
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
+                        //判断当前链表的元素是否超过要转换为红黑树的阈值 (节点数超过8就要转换为红黑树)
                         if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
-                            treeifyBin(tab, hash);
+                            treeifyBin(tab, hash); // 转换为红黑树
                         break;
                     }
                     if (e.hash == hash &&
@@ -678,53 +680,71 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
         int oldThr = threshold;
         int newCap, newThr = 0;
+        // 只有非第一次扩容才会进来（第一次扩容在第一次put）
         if (oldCap > 0) {
+            // oldCap最大为MAXIMUM_CAPACITY(2^30),可查看带参构造方法①
             if (oldCap >= MAXIMUM_CAPACITY) {
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
+            // 容量翻倍
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                      oldCap >= DEFAULT_INITIAL_CAPACITY)
                 newThr = oldThr << 1; // double threshold
         }
+        // 带参初始化会进入这里,主要是为了重新算threshold
         else if (oldThr > 0) // initial capacity was placed in threshold
             newCap = oldThr;
+        // 不带参初始化会进入这里
         else {               // zero initial threshold signifies using defaults
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
+        // 重新算threshold
         if (newThr == 0) {
             float ft = (float)newCap * loadFactor;
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
                       (int)ft : Integer.MAX_VALUE);
         }
         threshold = newThr;
+        // 扩容
         @SuppressWarnings({"rawtypes","unchecked"})
             Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
+        // 复制数据到新table中
         table = newTab;
         if (oldTab != null) {
+            // 遍历Node
             for (int j = 0; j < oldCap; ++j) {
                 Node<K,V> e;
                 if ((e = oldTab[j]) != null) {
                     oldTab[j] = null;
+                    // 如果只有一个节点,则直接赋值
                     if (e.next == null)
                         newTab[e.hash & (newCap - 1)] = e;
+                    // 如果是红黑树(较为复杂,不在这里说明)
                     else if (e instanceof TreeNode)
                         ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
                     else { // preserve order
+                        // 之所以定义两个头两个尾对象,是由于链表中的元素的下标在扩容后,要么是原下标+oldCap,要么不变,下面会证实
                         Node<K,V> loHead = null, loTail = null;
                         Node<K,V> hiHead = null, hiTail = null;
                         Node<K,V> next;
+                        //遍历桶中的链表
                         do {
                             next = e.next;
+                            // 下标没有改变,参考③
                             if ((e.hash & oldCap) == 0) {
                                 if (loTail == null)
+                                    // 第一个节点
                                     loHead = e;
                                 else
+                                    // 加入到尾部
                                     loTail.next = e;
+                                // 调整尾部元素
                                 loTail = e;
                             }
                             else {
+                                // 同理
                                 if (hiTail == null)
                                     hiHead = e;
                                 else
@@ -732,10 +752,13 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                                 hiTail = e;
                             }
                         } while ((e = next) != null);
+                        // 原下标对应的链表
                         if (loTail != null) {
+                            // 尾部节点next设置为null，代码严谨
                             loTail.next = null;
                             newTab[j] = loHead;
                         }
+                        // 新下标对应的链表
                         if (hiTail != null) {
                             hiTail.next = null;
                             newTab[j + oldCap] = hiHead;
