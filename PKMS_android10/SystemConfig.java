@@ -286,12 +286,10 @@ public class SystemConfig {
 
     SystemConfig() {
         // Read configuration from system
-        readPermissions(Environment.buildPath(
-                Environment.getRootDirectory(), "etc", "sysconfig"), ALLOW_ALL);
+        readPermissions(Environment.buildPath( Environment.getRootDirectory(), "etc", "sysconfig"), ALLOW_ALL);
 
         // Read configuration from the old permissions dir
-        readPermissions(Environment.buildPath(
-                Environment.getRootDirectory(), "etc", "permissions"), ALLOW_ALL);
+        readPermissions(Environment.buildPath( Environment.getRootDirectory(), "etc", "permissions"), ALLOW_ALL);
 
         // Vendors are only allowed to customze libs, features and privapp permissions
         int vendorPermissionFlag = ALLOW_LIBS | ALLOW_FEATURES | ALLOW_PRIVAPP_PERMISSIONS;
@@ -299,33 +297,25 @@ public class SystemConfig {
             // For backward compatibility
             vendorPermissionFlag |= (ALLOW_PERMISSIONS | ALLOW_APP_CONFIGS);
         }
-        readPermissions(Environment.buildPath(
-                Environment.getVendorDirectory(), "etc", "sysconfig"), vendorPermissionFlag);
-        readPermissions(Environment.buildPath(
-                Environment.getVendorDirectory(), "etc", "permissions"), vendorPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getVendorDirectory(), "etc", "sysconfig"), vendorPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getVendorDirectory(), "etc", "permissions"), vendorPermissionFlag);
 
         // Allow ODM to customize system configs as much as Vendor, because /odm is another
         // vendor partition other than /vendor.
         int odmPermissionFlag = vendorPermissionFlag;
-        readPermissions(Environment.buildPath(
-                Environment.getOdmDirectory(), "etc", "sysconfig"), odmPermissionFlag);
-        readPermissions(Environment.buildPath(
-                Environment.getOdmDirectory(), "etc", "permissions"), odmPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getOdmDirectory(), "etc", "sysconfig"), odmPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getOdmDirectory(), "etc", "permissions"), odmPermissionFlag);
 
         // Allow OEM to customize features and OEM permissions
         int oemPermissionFlag = ALLOW_FEATURES | ALLOW_OEM_PERMISSIONS;
-        readPermissions(Environment.buildPath(
-                Environment.getOemDirectory(), "etc", "sysconfig"), oemPermissionFlag);
-        readPermissions(Environment.buildPath(
-                Environment.getOemDirectory(), "etc", "permissions"), oemPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getOemDirectory(), "etc", "sysconfig"), oemPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getOemDirectory(), "etc", "permissions"), oemPermissionFlag);
 
         // Allow Product to customize system configs around libs, features, permissions and apps
         int productPermissionFlag = ALLOW_LIBS | ALLOW_FEATURES | ALLOW_PERMISSIONS |
                 ALLOW_APP_CONFIGS | ALLOW_PRIVAPP_PERMISSIONS;
-        readPermissions(Environment.buildPath(
-                Environment.getProductDirectory(), "etc", "sysconfig"), productPermissionFlag);
-        readPermissions(Environment.buildPath(
-                Environment.getProductDirectory(), "etc", "permissions"), productPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getProductDirectory(), "etc", "sysconfig"), productPermissionFlag);
+        readPermissions(Environment.buildPath( Environment.getProductDirectory(), "etc", "permissions"), productPermissionFlag);
     }
 
     void readPermissions(File libraryDir, int permissionFlag) {
@@ -345,6 +335,7 @@ public class SystemConfig {
         File platformFile = null;
         for (File f : libraryDir.listFiles()) {
             // We'll read platform.xml last
+            // 最后读取platform.xml
             if (f.getPath().endsWith("etc/permissions/platform.xml")) {
                 platformFile = f;
                 continue;
@@ -394,8 +385,7 @@ public class SystemConfig {
             }
 
             if (!parser.getName().equals("permissions") && !parser.getName().equals("config")) {
-                throw new XmlPullParserException("Unexpected start tag in " + permFile
-                        + ": found " + parser.getName() + ", expected 'permissions' or 'config'");
+                throw new XmlPullParserException("Unexpected start tag in " + permFile + ": found " + parser.getName() + ", expected 'permissions' or 'config'");
             }
 
             boolean allowAll = permissionFlag == ALLOW_ALL;
@@ -413,28 +403,28 @@ public class SystemConfig {
                 }
 
                 String name = parser.getName();
+                //解析 group 标签，前面介绍的 XML 文件中没有单独使用该标签的地方
                 if ("group".equals(name) && allowAll) {
                     String gidStr = parser.getAttributeValue(null, "gid");
                     if (gidStr != null) {
                         int gid = Process.getGidForName(gidStr);
+                        //转换 XML 中的 gid字符串为整型，并保存到 mGlobalGids 中
                         mGlobalGids = appendInt(mGlobalGids, gid);
                     } else {
-                        Slog.w(TAG, "<group> without gid in " + permFile + " at "
-                                + parser.getPositionDescription());
+                        Slog.w(TAG, "<group> without gid in " + permFile + " at " + parser.getPositionDescription());
                     }
 
                     XmlUtils.skipCurrentTag(parser);
                     continue;
-                } else if ("permission".equals(name) && allowPermissions) {
+                } else if ("permission".equals(name) && allowPermissions) {//解析 permission 标签
                     String perm = parser.getAttributeValue(null, "name");
                     if (perm == null) {
-                        Slog.w(TAG, "<permission> without name in " + permFile + " at "
-                                + parser.getPositionDescription());
+                        Slog.w(TAG, "<permission> without name in " + permFile + " at " + parser.getPositionDescription());
                         XmlUtils.skipCurrentTag(parser);
                         continue;
                     }
                     perm = perm.intern();
-                    readPermission(parser, perm);
+                    readPermission(parser, perm);//调用 readPermission 处理,存入
 
                 } else if ("assign-permission".equals(name) && allowPermissions) {
                     String perm = parser.getAttributeValue(null, "name");
@@ -663,12 +653,9 @@ public class SystemConfig {
                     // separately. This is to prevent xml files in the vendor partition from
                     // granting permissions to priv apps in the system partition and vice
                     // versa.
-                    boolean vendor = permFile.toPath().startsWith(
-                            Environment.getVendorDirectory().toPath())
-                            || permFile.toPath().startsWith(
-                                Environment.getOdmDirectory().toPath());
-                    boolean product = permFile.toPath().startsWith(
-                            Environment.getProductDirectory().toPath());
+                    boolean vendor = permFile.toPath().startsWith( Environment.getVendorDirectory().toPath())
+                            || permFile.toPath().startsWith( Environment.getOdmDirectory().toPath());
+                    boolean product = permFile.toPath().startsWith( Environment.getProductDirectory().toPath());
                     if (vendor) {
                         readPrivAppPermissions(parser, mVendorPrivAppPermissions,
                                 mVendorPrivAppDenyPermissions);

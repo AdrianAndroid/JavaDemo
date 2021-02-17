@@ -191,14 +191,11 @@ public final class Settings {
     private static final String TAG_BLOCK_UNINSTALL_PACKAGES = "block-uninstall-packages";
     private static final String TAG_BLOCK_UNINSTALL = "block-uninstall";
 
-    private static final String TAG_PERSISTENT_PREFERRED_ACTIVITIES =
-            "persistent-preferred-activities";
-    static final String TAG_CROSS_PROFILE_INTENT_FILTERS =
-            "crossProfile-intent-filters";
+    private static final String TAG_PERSISTENT_PREFERRED_ACTIVITIES = "persistent-preferred-activities";
+    static final String TAG_CROSS_PROFILE_INTENT_FILTERS = "crossProfile-intent-filters";
     private static final String TAG_DOMAIN_VERIFICATION = "domain-verification";
     private static final String TAG_DEFAULT_APPS = "default-apps";
-    private static final String TAG_ALL_INTENT_FILTER_VERIFICATION =
-            "all-intent-filter-verifications";
+    private static final String TAG_ALL_INTENT_FILTER_VERIFICATION = "all-intent-filter-verifications";
     private static final String TAG_DEFAULT_BROWSER = "default-browser";
     private static final String TAG_DEFAULT_DIALER = "default-dialer";
     private static final String TAG_VERSION = "version";
@@ -381,19 +378,15 @@ public final class Settings {
     /** Settings and other information about permissions */
     final PermissionSettings mPermissions;
 
-    Settings(File dataDir, PermissionSettings permission,
-            Object lock) {
+    Settings(File dataDir, PermissionSettings permission, Object lock) {
         mLock = lock;
         mPermissions = permission;
         mRuntimePermissionsPersistence = new RuntimePermissionPersistence(mLock);
-
+        // 创建一个"data/system"目录
         mSystemDir = new File(dataDir, "system");//mSystemDir指向目录"/data/system"
         mSystemDir.mkdirs();//创建"/data/system"
         //设置权限
-        FileUtils.setPermissions(mSystemDir.toString(),
-                FileUtils.S_IRWXU|FileUtils.S_IRWXG
-                |FileUtils.S_IROTH|FileUtils.S_IXOTH,
-                -1, -1);
+        FileUtils.setPermissions(mSystemDir.toString(), FileUtils.S_IRWXU|FileUtils.S_IRWXG |FileUtils.S_IROTH|FileUtils.S_IXOTH, -1, -1);
         //(1)指向目录"/data/system/packages.xml"
         mSettingsFilename = new File(mSystemDir, "packages.xml");
         //(2)指向目录"/data/system/packages-backup.xml"
@@ -2285,8 +2278,7 @@ public final class Settings {
                     // If both the backup and normal file exist, we
                     // ignore the normal one since it might have been
                     // corrupted.
-                    Slog.w(PackageManagerService.TAG, "Cleaning up stopped packages file "
-                            + mStoppedPackagesFilename);
+                    Slog.w(PackageManagerService.TAG, "Cleaning up stopped packages file " + mStoppedPackagesFilename);
                     mStoppedPackagesFilename.delete();
                 }
             } catch (IOException e) {
@@ -2913,14 +2905,12 @@ public final class Settings {
             try {
                 str = new FileInputStream(mBackupSettingsFilename);
                 mReadMessages.append("Reading from backup settings file\n");
-                PackageManagerService.reportSettingsProblem(Log.INFO,
-                        "Need to read from backup settings file");
+                PackageManagerService.reportSettingsProblem(Log.INFO, "Need to read from backup settings file");
                 if (mSettingsFilename.exists()) {
                     // If both the backup and settings file exist, we
                     // ignore the settings since it might have been
                     // corrupted.
-                    Slog.w(PackageManagerService.TAG, "Cleaning up settings file "
-                            + mSettingsFilename);
+                    Slog.w(PackageManagerService.TAG, "Cleaning up settings file " + mSettingsFilename);
                     mSettingsFilename.delete();
                 }
             } catch (IOException e) {
@@ -2937,8 +2927,7 @@ public final class Settings {
             if (str == null) {
                 if (!mSettingsFilename.exists()) {
                     mReadMessages.append("No settings file found\n");
-                    PackageManagerService.reportSettingsProblem(Log.INFO,
-                            "No settings file; creating initial state");
+                    PackageManagerService.reportSettingsProblem(Log.INFO, "No settings file; creating initial state");
                     // It's enough to just touch version details to create them
                     // with default values
                     findOrCreateVersion(StorageManager.UUID_PRIVATE_INTERNAL).forceCurrent();
@@ -2959,10 +2948,8 @@ public final class Settings {
 
             if (type != XmlPullParser.START_TAG) {
                 mReadMessages.append("No start tag found in settings file\n");
-                PackageManagerService.reportSettingsProblem(Log.WARN,
-                        "No start tag found in package manager settings");
-                Slog.wtf(PackageManagerService.TAG,
-                        "No start tag found in package manager settings");
+                PackageManagerService.reportSettingsProblem(Log.WARN, "No start tag found in package manager settings");
+                Slog.wtf(PackageManagerService.TAG, "No start tag found in package manager settings");
                 return false;
             }
 
@@ -3010,22 +2997,17 @@ public final class Settings {
                     readRestoredIntentFilterVerifications(parser);
                 } else if (tagName.equals("last-platform-version")) {
                     // Upgrade from older XML schema
-                    final VersionInfo internal = findOrCreateVersion(
-                            StorageManager.UUID_PRIVATE_INTERNAL);
-                    final VersionInfo external = findOrCreateVersion(
-                            StorageManager.UUID_PRIMARY_PHYSICAL);
+                    final VersionInfo internal = findOrCreateVersion(StorageManager.UUID_PRIVATE_INTERNAL);
+                    final VersionInfo external = findOrCreateVersion(StorageManager.UUID_PRIMARY_PHYSICAL);
 
                     internal.sdkVersion = XmlUtils.readIntAttribute(parser, "internal", 0);
                     external.sdkVersion = XmlUtils.readIntAttribute(parser, "external", 0);
-                    internal.fingerprint = external.fingerprint =
-                            XmlUtils.readStringAttribute(parser, "fingerprint");
+                    internal.fingerprint = external.fingerprint = XmlUtils.readStringAttribute(parser, "fingerprint");
 
                 } else if (tagName.equals("database-version")) {
                     // Upgrade from older XML schema
-                    final VersionInfo internal = findOrCreateVersion(
-                            StorageManager.UUID_PRIVATE_INTERNAL);
-                    final VersionInfo external = findOrCreateVersion(
-                            StorageManager.UUID_PRIMARY_PHYSICAL);
+                    final VersionInfo internal = findOrCreateVersion(StorageManager.UUID_PRIVATE_INTERNAL);
+                    final VersionInfo external = findOrCreateVersion(StorageManager.UUID_PRIMARY_PHYSICAL);
 
                     internal.databaseVersion = XmlUtils.readIntAttribute(parser, "internal", 0);
                     external.databaseVersion = XmlUtils.readIntAttribute(parser, "external", 0);
@@ -3035,25 +3017,21 @@ public final class Settings {
                     try {
                         mVerifierDeviceIdentity = VerifierDeviceIdentity.parse(deviceIdentity);
                     } catch (IllegalArgumentException e) {
-                        Slog.w(PackageManagerService.TAG, "Discard invalid verifier device id: "
-                                + e.getMessage());
+                        Slog.w(PackageManagerService.TAG, "Discard invalid verifier device id: " + e.getMessage());
                     }
                 } else if (TAG_READ_EXTERNAL_STORAGE.equals(tagName)) {
                     final String enforcement = parser.getAttributeValue(null, ATTR_ENFORCEMENT);
-                    mReadExternalStorageEnforced =
-                            "1".equals(enforcement) ? Boolean.TRUE : Boolean.FALSE;
+                    mReadExternalStorageEnforced = "1".equals(enforcement) ? Boolean.TRUE : Boolean.FALSE;
                 } else if (tagName.equals("keyset-settings")) {
                     mKeySetManagerService.readKeySetsLPw(parser, mKeySetRefs);
                 } else if (TAG_VERSION.equals(tagName)) {
-                    final String volumeUuid = XmlUtils.readStringAttribute(parser,
-                            ATTR_VOLUME_UUID);
+                    final String volumeUuid = XmlUtils.readStringAttribute(parser, ATTR_VOLUME_UUID);
                     final VersionInfo ver = findOrCreateVersion(volumeUuid);
                     ver.sdkVersion = XmlUtils.readIntAttribute(parser, ATTR_SDK_VERSION);
                     ver.databaseVersion = XmlUtils.readIntAttribute(parser, ATTR_DATABASE_VERSION);
                     ver.fingerprint = XmlUtils.readStringAttribute(parser, ATTR_FINGERPRINT);
                 } else {
-                    Slog.w(PackageManagerService.TAG, "Unknown element under <packages>: "
-                            + parser.getName());
+                    Slog.w(PackageManagerService.TAG, "Unknown element under <packages>: " + parser.getName());
                     XmlUtils.skipCurrentTag(parser);
                 }
             }
@@ -3342,8 +3320,7 @@ public final class Settings {
     private void applyDefaultPreferredActivityLPw(PackageManagerInternal pmInternal, Intent intent,
             int flags, ComponentName cn, String scheme, PatternMatcher ssp,
             IntentFilter.AuthorityEntry auth, PatternMatcher path, int userId) {
-        final List<ResolveInfo> ri =
-                pmInternal.queryIntentActivities(intent, flags, Binder.getCallingUid(), 0);
+        final List<ResolveInfo> ri = pmInternal.queryIntentActivities(intent, flags, Binder.getCallingUid(), 0);
         if (PackageManagerService.DEBUG_PREFERRED) {
             Log.d(TAG, "Queried " + intent + " results: " + ri);
         }
@@ -3351,8 +3328,7 @@ public final class Settings {
         int thirdPartyMatch = 0;
         final int numMatches = (ri == null ? 0 : ri.size());
         if (numMatches <= 1) {
-            Slog.w(TAG, "No potential matches found for " + intent
-                    + " while setting preferred " + cn.flattenToShortString());
+            Slog.w(TAG, "No potential matches found for " + intent + " while setting preferred " + cn.flattenToShortString());
             return;
         }
         boolean haveAct = false;
@@ -3372,8 +3348,7 @@ public final class Settings {
                     haveNonSys = set[i];
                     break;
                 }
-            } else if (cn.getPackageName().equals(ai.packageName)
-                    && cn.getClassName().equals(ai.name)) {
+            } else if (cn.getPackageName().equals(ai.packageName) && cn.getClassName().equals(ai.name)) {
                 if (PackageManagerService.DEBUG_PREFERRED) {
                     Log.d(TAG, "Result " + ai.packageName + "/" + ai.name + ": default!");
                 }

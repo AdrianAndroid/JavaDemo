@@ -376,8 +376,7 @@ public final class SystemServer {
             SystemProperties.set(SYSPROP_START_ELAPSED, String.valueOf(mRuntimeStartElapsedTime));
             SystemProperties.set(SYSPROP_START_UPTIME, String.valueOf(mRuntimeStartUptime));
 
-            EventLog.writeEvent(EventLogTags.SYSTEM_SERVER_START,
-                    mStartCount, mRuntimeStartUptime, mRuntimeStartElapsedTime);
+            EventLog.writeEvent(EventLogTags.SYSTEM_SERVER_START, mStartCount, mRuntimeStartUptime, mRuntimeStartElapsedTime);
 
             // If a device's clock is before 1970 (before 0), a lot of
             // APIs crash dealing with negative numbers, notably
@@ -507,9 +506,11 @@ public final class SystemServer {
         // Start services.
         try {
             traceBeginAndSlog("StartServices");
-            startBootstrapServices();
-            startCoreServices();
-            startOtherServices();
+            // ...省略大段代码...
+            // TOOD 同学们注意: 除了启动PKMS服务之外,还启动了其他很多的服务, 例如:ActivityManagerService等
+            startBootstrapServices();// 同学们 这是 引导服务
+            startCoreServices();// 同学们 这是 核心服务
+            startOtherServices();// 同学们 这是 其他服务
             SystemServerInitThreadPool.shutdown();
         } catch (Throwable ex) {
             Slog.e("System", "******************************************");
@@ -658,10 +659,12 @@ public final class SystemServer {
         // Activity manager runs the show.
         traceBeginAndSlog("StartActivityManager");
         // TODO: Might need to move after migration to WM.
-        ActivityTaskManagerService atm = mSystemServiceManager.startService(
-                ActivityTaskManagerService.Lifecycle.class).getService();
-        mActivityManagerService = ActivityManagerService.Lifecycle.startService(
-                mSystemServiceManager, atm);
+        /*
+         * 创建ActivityManagerService实例
+         * 同学们注意：mActivityManagerService是被添加进SystemServiceManager维护起来的
+         */
+        ActivityTaskManagerService atm = mSystemServiceManager.startService(ActivityTaskManagerService.Lifecycle.class).getService();
+        mActivityManagerService = ActivityManagerService.Lifecycle.startService(mSystemServiceManager, atm);
         mActivityManagerService.setSystemServiceManager(mSystemServiceManager);
         mActivityManagerService.setInstaller(installer);
         mWindowManagerGlobalLock = atm.getGlobalLock();
@@ -738,8 +741,12 @@ public final class SystemServer {
         try {
             Watchdog.getInstance().pauseWatchingCurrentThread("packagemanagermain");
             // 第三步：调用main方法初始化PackageManagerService
-            mPackageManagerService = PackageManagerService.main(mSystemContext, installer,
-                    mFactoryTestMode != FactoryTest.FACTORY_TEST_OFF, mOnlyCore);
+            /*
+             * 创建PackageManagerService实例；
+             * 同学们注意：PackageManagerService没有被SystemServiceManager维护起来；
+             * 思考：那它到底被谁维护起来了呢？
+             */
+            mPackageManagerService = PackageManagerService.main(mSystemContext, installer, mFactoryTestMode != FactoryTest.FACTORY_TEST_OFF, mOnlyCore);
         } finally {
             Watchdog.getInstance().resumeWatchingCurrentThread("packagemanagermain");
         }
@@ -1184,6 +1191,7 @@ public final class SystemServer {
             traceBeginAndSlog("UpdatePackagesIfNeeded");
             try {
                 Watchdog.getInstance().pauseWatchingCurrentThread("dexopt");
+                // 第五步：如果设备没有加密，执行performDexOptUpgrade，完成dex优化；
                 mPackageManagerService.updatePackagesIfNeeded();
             } catch (Throwable e) {
                 reportWtf("update packages", e);
@@ -1195,6 +1203,7 @@ public final class SystemServer {
 
         traceBeginAndSlog("PerformFstrimIfNeeded");
         try {
+            //第六步：最终执行performFstrim，完成磁盘维护
             mPackageManagerService.performFstrimIfNeeded();
         } catch (Throwable e) {
             reportWtf("performing fstrim", e);
@@ -1986,6 +1995,7 @@ public final class SystemServer {
         traceEnd();
 
         traceBeginAndSlog("MakePackageManagerServiceReady");
+        //第七步：PKMS准备就绪
         mPackageManagerService.systemReady();
         traceEnd();
 

@@ -173,8 +173,9 @@ public class Installer extends SystemService {
             String seInfo, int targetSdkVersion) throws InstallerException {
         if (!checkBeforeRemote()) return -1;
         try {
-            return mInstalld.createAppData(uuid, packageName, userId, flags, appId, seInfo,
-                    targetSdkVersion);
+            // mInstalld 为IInstalld的对象，即通过Binder调用到 进程installd，最终调用installd的createAppData()
+            // 【同学们注意】 mInstalld是一个aidl文件，通过此aidl文件调用到 Binder机制的服务端，服务端哪里要操控底层....
+            return mInstalld.createAppData(uuid, packageName, userId, flags, appId, seInfo, targetSdkVersion);
         } catch (Exception e) {
             throw InstallerException.from(e);
         }

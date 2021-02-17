@@ -893,8 +893,7 @@ public class PackageManagerService extends IPackageManager.Stub
     }
 
     final PackageParser.Callback mPackageParserCallback = new PackageParserCallback();
-    final ParallelPackageParserCallback mParallelPackageParserCallback =
-            new ParallelPackageParserCallback();
+    final ParallelPackageParserCallback mParallelPackageParserCallback = new ParallelPackageParserCallback();
 
     // Currently known shared libraries.
     final ArrayMap<String, LongSparseArray<SharedLibraryInfo>> mSharedLibraries = new ArrayMap<>();
@@ -1484,9 +1483,9 @@ public class PackageManagerService extends IPackageManager.Stub
                     HandlerParams params = (HandlerParams) msg.obj;
                     if (params != null) {
                         if (DEBUG_INSTALL) Slog.i(TAG, "init_copy: " + params);
-                        Trace.asyncTraceEnd(TRACE_TAG_PACKAGE_MANAGER, "queueInstall",
-                                System.identityHashCode(params));
+                        Trace.asyncTraceEnd(TRACE_TAG_PACKAGE_MANAGER, "queueInstall", System.identityHashCode(params));
                         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "startCopy");
+                        // 【同学们注意】执行APK拷贝动作，这里会执行到 final void startCopy()
                         params.startCopy();
                         Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
                     }
@@ -2356,11 +2355,14 @@ public class PackageManagerService extends IPackageManager.Stub
     public static PackageManagerService main(Context context, Installer installer,
                                              boolean factoryTest, boolean onlyCore) {
         // Self-check for initial settings.
+        //(1)检查Package编译相关系统属性
         PackageManagerServiceCompilerMapping.checkProperties();
-
-        PackageManagerService m = new PackageManagerService(context, installer,
-                factoryTest, onlyCore);
+        //(2)调用PackageManagerService构造方法,同学们可以参考【PKMS构造方法】
+        PackageManagerService m = new PackageManagerService(context, installer, factoryTest, onlyCore);
+        //(3)启用部分应用服务于多用户场景
         m.enableSystemUserPackages();
+        //(4)往ServiceManager中注册”package”和”package_native”。
+        // 在这里将PackageManagerService实例添加到ServiceManager中
         ServiceManager.addService("package", m);
         final PackageManagerNative pmn = m.new PackageManagerNative();
         ServiceManager.addService("package_native", pmn);
@@ -2450,12 +2452,13 @@ public class PackageManagerService extends IPackageManager.Stub
         }
     }
 
-    public PackageManagerService(Context context, Installer installer,
-                                 boolean factoryTest, boolean onlyCore) {
+    public PackageManagerService(Context context, Installer installer, boolean factoryTest, boolean onlyCore) {
         LockGuard.installLock(mPackages, LockGuard.INDEX_PACKAGES);
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "create package manager");
-        EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_START,
-                SystemClock.uptimeMillis());
+        /////////////////////////////////////////////////////////////////////////////////
+        // 阶段1：BOOT_PROGRESS_PMS_START
+        /////////////////////////////////////////////////////////////////////////////////
+        EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_START, SystemClock.uptimeMillis());
 
         if (mSdkVersion <= 0) {
             Slog.w(TAG, "**** ro.build.version.sdk not set!");
@@ -2463,10 +2466,12 @@ public class PackageManagerService extends IPackageManager.Stub
 
         mContext = context;
 
-        mFactoryTest = factoryTest;
-        mOnlyCore = onlyCore;
+        mFactoryTest = factoryTest;//一般为false，即非工厂生产模式
+        mOnlyCore = onlyCore;//标记是否只加载核心服务
         mMetrics = new DisplayMetrics();
-        mInstaller = installer;
+        //【同学们注意】(1)构造DisplayMetrics，保存分辨率等相关信息；  mMetrics=newDisplayMetrics();//分辨率配置
+        //【同学们注意】(2)创建Installer对象，与installd交互；
+        mInstaller = installer;//保存installer对象
 
         // Create sub-components that provide services / data. Order here is important.
         synchronized (mInstallLock) {
@@ -2475,39 +2480,27 @@ public class PackageManagerService extends IPackageManager.Stub
                 //公开系统组件使用的私有服务      //本地服务
                 LocalServices.addService(PackageManagerInternal.class, new PackageManagerInternalImpl());
                 //多用户管理服务
-                sUserManager = new UserManagerService(context, this
-                        , new UserDataPreparer(mInstaller, mInstallLock, mContext, mOnlyCore), mPackages);
-                mComponentResolver = new ComponentResolver(sUserManager,
-                        LocalServices.getService(PackageManagerInternal.class),
-                        mPackages);
+                sUserManager = new UserManagerService(context, this, new UserDataPreparer(mInstaller, mInstallLock, mContext, mOnlyCore), mPackages);
+                mComponentResolver = new ComponentResolver(sUserManager, LocalServices.getService(PackageManagerInternal.class), mPackages);
                 //【同学们注意】(3)创建mPermissionManager对象，进行权限管理；
                 //权限管理服务
                 mPermissionManager = PermissionManagerService.create(context, mPackages /*externalLock*/);
                 mDefaultPermissionPolicy = mPermissionManager.getDefaultPermissionGrantPolicy();
                 //创建Settings对象
-                mSettings = new Settings(Environment.getDataDirectory(),
-                        mPermissionManager.getPermissionSettings(), mPackages);
+                mSettings = new Settings(Environment.getDataDirectory(), mPermissionManager.getPermissionSettings(), mPackages);
             }
         }
         //【同学们注意】(4)构造Settings类，保存安装包信息，清除路径不存在的孤立应用，主要涉及/data/system/目录的packages.xml，packages-backup.xml，
         // packages.list，packages-stopped.xml，packages-stopped-backup.xml等文件。
         //添加system,phone,log,nfc,bluetooth,shell，se，networkstack这8种shareUserId到mSettings；
-        mSettings.addSharedUserLPw("android.uid.system", Process.SYSTEM_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
-        mSettings.addSharedUserLPw("android.uid.phone", RADIO_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
-        mSettings.addSharedUserLPw("android.uid.log", LOG_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
-        mSettings.addSharedUserLPw("android.uid.nfc", NFC_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
-        mSettings.addSharedUserLPw("android.uid.bluetooth", BLUETOOTH_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
-        mSettings.addSharedUserLPw("android.uid.shell", SHELL_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
-        mSettings.addSharedUserLPw("android.uid.se", SE_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
-        mSettings.addSharedUserLPw("android.uid.networkstack", NETWORKSTACK_UID,
-                ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.system", Process.SYSTEM_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.phone", RADIO_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.log", LOG_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.nfc", NFC_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.bluetooth", BLUETOOTH_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.shell", SHELL_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.se", SE_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
+        mSettings.addSharedUserLPw("android.uid.networkstack", NETWORKSTACK_UID, ApplicationInfo.FLAG_SYSTEM, ApplicationInfo.PRIVATE_FLAG_PRIVILEGED);
 
         String separateProcesses = SystemProperties.get("debug.separate_processes");
         if (separateProcesses != null && separateProcesses.length() > 0) {
@@ -2562,8 +2555,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 //Instant应用注册
                 mInstantAppRegistry = new InstantAppRegistry(this);
                 //共享lib库配置
-                ArrayMap<String, SystemConfig.SharedLibraryEntry> libConfig
-                        = systemConfig.getSharedLibraries();
+                ArrayMap<String, SystemConfig.SharedLibraryEntry> libConfig = systemConfig.getSharedLibraries();
                 final int builtInLibCount = libConfig.size();
                 for (int i = 0; i < builtInLibCount; i++) {
                     String name = libConfig.keyAt(i);
@@ -2579,8 +2571,7 @@ public class PackageManagerService extends IPackageManager.Stub
                     SystemConfig.SharedLibraryEntry entry = libConfig.valueAt(i);
                     final int dependencyCount = entry.dependencies.length;
                     for (int j = 0; j < dependencyCount; j++) {
-                        final SharedLibraryInfo dependency =
-                                getSharedLibraryInfoLPr(entry.dependencies[j], undefinedVersion);
+                        final SharedLibraryInfo dependency = getSharedLibraryInfoLPr(entry.dependencies[j], undefinedVersion);
                         if (dependency != null) {
                             getSharedLibraryInfoLPr(name, undefinedVersion).addDependency(dependency);
                         }
@@ -2617,18 +2608,19 @@ public class PackageManagerService extends IPackageManager.Stub
                     requestCopyPreoptedFiles();
                 }
 
-                String customResolverActivityName = Resources.getSystem().getString(
-                        R.string.config_customResolverActivity);
+                String customResolverActivityName = Resources.getSystem().getString(R.string.config_customResolverActivity);
                 if (!TextUtils.isEmpty(customResolverActivityName)) {
-                    mCustomResolverComponentName = ComponentName.unflattenFromString(
-                            customResolverActivityName);
+                    mCustomResolverComponentName = ComponentName.unflattenFromString(customResolverActivityName);
                 }
 
+                //记录扫描开始时间
                 long startTime = SystemClock.uptimeMillis();
-
-                EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_SYSTEM_SCAN_START,
-                        startTime);
-
+                /////////////////////////////////////////////////////////////////////////////////
+                // 阶段2：BOOT_PROGRESS_PMS_SYSTEM_SCAN_START
+                /////////////////////////////////////////////////////////////////////////////////
+                EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_SYSTEM_SCAN_START, startTime);
+                //【同学们注意】(1)从init.rc中获取环境变量BOOTCLASSPATH和SYSTEMSERVERCLASSPATH；
+                //获取环境变量，init.rc
                 final String bootClassPath = System.getenv("BOOTCLASSPATH");
                 final String systemServerClassPath = System.getenv("SYSTEMSERVERCLASSPATH");
 
@@ -2639,22 +2631,23 @@ public class PackageManagerService extends IPackageManager.Stub
                 if (systemServerClassPath == null) {
                     Slog.w(TAG, "No SYSTEMSERVERCLASSPATH found!");
                 }
-
+                //获取system/framework目录
                 File frameworkDir = new File(Environment.getRootDirectory(), "framework");
-
+                //获取内部版本
                 final VersionInfo ver = mSettings.getInternalVersion();
-                mIsUpgrade = !Build.FINGERPRINT.equals(ver.fingerprint);
+                mIsUpgrade = !Build.FINGERPRINT.equals(ver.fingerprint);//判断fingerprint是否有更新
                 if (mIsUpgrade) {
-                    logCriticalInfo(Log.INFO,
-                            "Upgrading from " + ver.fingerprint + " to " + Build.FINGERPRINT);
+                    logCriticalInfo(Log.INFO, "Upgrading from " + ver.fingerprint + " to " + Build.FINGERPRINT);
                 }
 
                 // when upgrading from pre-M, promote system app permissions from install to runtime
-                mPromoteSystemApps =
-                        mIsUpgrade && ver.sdkVersion <= Build.VERSION_CODES.LOLLIPOP_MR1;
+                //【同学们注意】(2)对于旧版本升级的情况，将安装时获取权限变更为运行时申请权限；
+                //对于AndroidM之前版本升级上来的情况，需将系统应用程序权限从安装升级到运行时
+                mPromoteSystemApps = mIsUpgrade && ver.sdkVersion <= Build.VERSION_CODES.LOLLIPOP_MR1;
 
                 // When upgrading from pre-N, we need to handle package extraction like first boot,
                 // as there is no profiling data available.
+                //对于AndroidN之前版本升级上来的情况，需像首次启动一样处理package
                 mIsPreNUpgrade = mIsUpgrade && ver.sdkVersion < Build.VERSION_CODES.N;
 
                 mIsPreNMR1Upgrade = mIsUpgrade && ver.sdkVersion < Build.VERSION_CODES.N_MR1;
@@ -2664,6 +2657,7 @@ public class PackageManagerService extends IPackageManager.Stub
 
                 // save off the names of pre-existing system packages prior to scanning; we don't
                 // want to automatically grant runtime permissions for new system apps
+                //在扫描之前保存预先存在的系统package的名称，不希望自动为新系统应用授予运行时权限
                 if (mPromoteSystemApps) {
                     Iterator<PackageSetting> pkgSettingIter = mSettings.mPackages.values().iterator();
                     while (pkgSettingIter.hasNext()) {
@@ -2673,11 +2667,12 @@ public class PackageManagerService extends IPackageManager.Stub
                         }
                     }
                 }
-
+                //准备解析package的缓存
                 mCacheDir = preparePackageParserCache();
 
                 // Set flag to monitor and not change apk file paths when
                 // scanning install directories.
+                //设置flag，而不在扫描安装时更改文件路径
                 int scanFlags = SCAN_BOOTING | SCAN_INITIAL;
 
                 if (mIsUpgrade || mFirstBoot) {
@@ -2688,76 +2683,33 @@ public class PackageManagerService extends IPackageManager.Stub
                 // any apps.)
                 // For security and version matching reason, only consider overlay packages if they
                 // reside in the right directory.
-                scanDirTracedLI(new File(VENDOR_OVERLAY_DIR),
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_VENDOR,
-                        0);
-                scanDirTracedLI(new File(PRODUCT_OVERLAY_DIR),
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRODUCT,
-                        0);
-                scanDirTracedLI(new File(PRODUCT_SERVICES_OVERLAY_DIR),
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRODUCT_SERVICES,
-                        0);
-                scanDirTracedLI(new File(ODM_OVERLAY_DIR),
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_ODM,
-                        0);
-                scanDirTracedLI(new File(OEM_OVERLAY_DIR),
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_OEM,
-                        0);
+                //【同学们注意：】(3)扫描system/vendor/product/odm/oem等目录的priv-app、app、overlay包
+                //扫描以下路径：
+                // /vendor/overlay、/product/overlay、/product_services/overlay、/odm/overlay、/oem/overlay、/system/framework
+                // /system/priv-app、/system/app、/vendor/priv-app、/vendor/app、/odm/priv-app、/odm/app、/oem/app、/oem/priv-app、
+                // /product/priv-app、/product/app、/product_services/priv-app、/product_services/app、/product_services/priv-app
+                //[PMSapk的安装]
+                scanDirTracedLI(new File(VENDOR_OVERLAY_DIR), mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_VENDOR, 0);
+                scanDirTracedLI(new File(PRODUCT_OVERLAY_DIR), mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT, 0);
+                scanDirTracedLI(new File(PRODUCT_SERVICES_OVERLAY_DIR), mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT_SERVICES, 0);
+                scanDirTracedLI(new File(ODM_OVERLAY_DIR), mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_ODM, 0);
+                scanDirTracedLI(new File(OEM_OVERLAY_DIR), mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_OEM, 0);
 
                 mParallelPackageParserCallback.findStaticOverlayPackages();
 
                 // Find base frameworks (resource packages without code).
-                scanDirTracedLI(frameworkDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_NO_DEX
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRIVILEGED,
-                        0);
+                scanDirTracedLI(frameworkDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_NO_DEX | SCAN_AS_SYSTEM | SCAN_AS_PRIVILEGED, 0);
                 if (!mPackages.containsKey("android")) {
-                    throw new IllegalStateException(
-                            "Failed to load frameworks package; check log for warnings");
+                    throw new IllegalStateException("Failed to load frameworks package; check log for warnings");
                 }
 
                 // Collect privileged system packages.
                 final File privilegedAppDir = new File(Environment.getRootDirectory(), "priv-app");
-                scanDirTracedLI(privilegedAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRIVILEGED,
-                        0);
+                scanDirTracedLI(privilegedAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRIVILEGED, 0);
 
                 // Collect ordinary system packages.
                 final File systemAppDir = new File(Environment.getRootDirectory(), "app");
-                scanDirTracedLI(systemAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM,
-                        0);
+                scanDirTracedLI(systemAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM, 0);
 
                 // Collect privileged vendor packages.
                 File privilegedVendorAppDir = new File(Environment.getVendorDirectory(), "priv-app");
@@ -2766,14 +2718,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(privilegedVendorAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_VENDOR
-                                | SCAN_AS_PRIVILEGED,
-                        0);
+                scanDirTracedLI(privilegedVendorAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_VENDOR | SCAN_AS_PRIVILEGED, 0);
 
                 // Collect ordinary vendor packages.
                 File vendorAppDir = new File(Environment.getVendorDirectory(), "app");
@@ -2782,13 +2727,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(vendorAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_VENDOR,
-                        0);
+                scanDirTracedLI(vendorAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_VENDOR, 0);
 
                 // Collect privileged odm packages. /odm is another vendor partition
                 // other than /vendor.
@@ -2799,14 +2738,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(privilegedOdmAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_VENDOR
-                                | SCAN_AS_PRIVILEGED,
-                        0);
+                scanDirTracedLI(privilegedOdmAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_VENDOR | SCAN_AS_PRIVILEGED, 0);
 
                 // Collect ordinary odm packages. /odm is another vendor partition
                 // other than /vendor.
@@ -2816,23 +2748,11 @@ public class PackageManagerService extends IPackageManager.Stub
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(odmAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_VENDOR,
-                        0);
+                scanDirTracedLI(odmAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_VENDOR, 0);
 
                 // Collect all OEM packages.
                 final File oemAppDir = new File(Environment.getOemDirectory(), "app");
-                scanDirTracedLI(oemAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_OEM,
-                        0);
+                scanDirTracedLI(oemAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_OEM, 0);
 
                 // Collected privileged /product packages.
                 File privilegedProductAppDir = new File(Environment.getProductDirectory(), "priv-app");
@@ -2841,14 +2761,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(privilegedProductAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRODUCT
-                                | SCAN_AS_PRIVILEGED,
-                        0);
+                scanDirTracedLI(privilegedProductAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT | SCAN_AS_PRIVILEGED, 0);
 
                 // Collect ordinary /product packages.
                 File productAppDir = new File(Environment.getProductDirectory(), "app");
@@ -2857,31 +2770,17 @@ public class PackageManagerService extends IPackageManager.Stub
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(productAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRODUCT,
-                        0);
+                scanDirTracedLI(productAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT, 0);
 
                 // Collected privileged /product_services packages.
-                File privilegedProductServicesAppDir =
-                        new File(Environment.getProductServicesDirectory(), "priv-app");
+                File privilegedProductServicesAppDir = new File(Environment.getProductServicesDirectory(), "priv-app");
                 try {
                     privilegedProductServicesAppDir =
                             privilegedProductServicesAppDir.getCanonicalFile();
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(privilegedProductServicesAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRODUCT_SERVICES
-                                | SCAN_AS_PRIVILEGED,
-                        0);
+                scanDirTracedLI(privilegedProductServicesAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT_SERVICES | SCAN_AS_PRIVILEGED, 0);
 
                 // Collect ordinary /product_services packages.
                 File productServicesAppDir = new File(Environment.getProductServicesDirectory(), "app");
@@ -2890,13 +2789,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 } catch (IOException e) {
                     // failed to look up canonical path, continue with original one
                 }
-                scanDirTracedLI(productServicesAppDir,
-                        mDefParseFlags
-                                | PackageParser.PARSE_IS_SYSTEM_DIR,
-                        scanFlags
-                                | SCAN_AS_SYSTEM
-                                | SCAN_AS_PRODUCT_SERVICES,
-                        0);
+                scanDirTracedLI(productServicesAppDir, mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR, scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT_SERVICES, 0);
 
                 // Prune any system packages that no longer exist.
                 final List<String> possiblyDeletedUpdatedSystemApps = new ArrayList<>();
@@ -2921,6 +2814,7 @@ public class PackageManagerService extends IPackageManager.Stub
                          * If this is not a system app, it can't be a
                          * disable system app.
                          */
+                        //如果不是系统应用，则不被允许disable
                         if ((ps.pkgFlags & ApplicationInfo.FLAG_SYSTEM) == 0) {
                             continue;
                         }
@@ -2928,6 +2822,7 @@ public class PackageManagerService extends IPackageManager.Stub
                         /*
                          * If the package is scanned, it's not erased.
                          */
+                        //如果应用被扫描，则不允许被擦除
                         final PackageParser.Package scannedPkg = mPackages.get(ps.name);
                         if (scannedPkg != null) {
                             /*
@@ -2977,32 +2872,34 @@ public class PackageManagerService extends IPackageManager.Stub
                     }
                 }
 
-                //delete tmp files
+                //delete tmp files\
+                //【同学们注意】(4)清除安装时临时文件以及其他不必要的信息。
+                //删除临时文件
                 deleteTempPackageFiles();
 
                 final int cachedSystemApps = PackageParser.sCachedPackageReadCount.get();
 
                 // Remove any shared userIDs that have no associated packages
+                //删除没有关联应用的共享UID标识
                 mSettings.pruneSharedUsersLPw();
                 final long systemScanTime = SystemClock.uptimeMillis() - startTime;
                 final int systemPackagesCount = mPackages.size();
-                Slog.i(TAG, "Finished scanning system apps. Time: " + systemScanTime
-                        + " ms, packageCount: " + systemPackagesCount
-                        + " , timePerPackage: "
-                        + (systemPackagesCount == 0 ? 0 : systemScanTime / systemPackagesCount)
-                        + " , cached: " + cachedSystemApps);
+                Slog.i(TAG, "Finished scanning system apps. Time: " + systemScanTime + " ms, packageCount: " + systemPackagesCount + " , timePerPackage: " + (systemPackagesCount == 0 ? 0 : systemScanTime / systemPackagesCount) + " , cached: " + cachedSystemApps);
                 if (mIsUpgrade && systemPackagesCount > 0) {
-                    MetricsLogger.histogram(null, "ota_package_manager_system_app_avg_scan_time",
-                            ((int) systemScanTime) / systemPackagesCount);
+                    MetricsLogger.histogram(null, "ota_package_manager_system_app_avg_scan_time", ((int) systemScanTime) / systemPackagesCount);
                 }
                 if (!mOnlyCore) {
-                    EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_DATA_SCAN_START,
-                            SystemClock.uptimeMillis());
+                    /////////////////////////////////////////////////////////////////////////////////
+                    //阶段3：BOOT_PROGRESS_PMS_DATA_SCAN_STAR
+                    /////////////////////////////////////////////////////////////////////////////////
+                    EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_DATA_SCAN_START, SystemClock.uptimeMillis());
                     scanDirTracedLI(sAppInstallDir, 0, scanFlags | SCAN_REQUIRE_KNOWN, 0);
 
                     // Remove disable package settings for updated system apps that were
                     // removed via an OTA. If the update is no longer present, remove the
                     // app completely. Otherwise, revoke their system privileges.
+                    // 移除通过OTA删除的更新系统应用程序的禁用package设置
+                    // 如果更新不再存在，则完全删除该应用。否则，撤消其系统权限
                     for (int i = possiblyDeletedUpdatedSystemApps.size() - 1; i >= 0; --i) {
                         final String packageName = possiblyDeletedUpdatedSystemApps.get(i);
                         final PackageParser.Package pkg = mPackages.get(packageName);
@@ -3014,14 +2911,12 @@ public class PackageManagerService extends IPackageManager.Stub
 
                         if (pkg == null) {
                             // should have found an update, but, we didn't; remove everything
-                            msg = "Updated system package " + packageName
-                                    + " no longer exists; removing its data";
+                            msg = "Updated system package " + packageName + " no longer exists; removing its data";
                             // Actual deletion of code and data will be handled by later
                             // reconciliation step
                         } else {
                             // found an update; revoke system privileges
-                            msg = "Updated system package " + packageName
-                                    + " no longer exists; rescanning package on data";
+                            msg = "Updated system package " + packageName + " no longer exists; rescanning package on data";
 
                             // NOTE: We don't do anything special if a stub is removed from the
                             // system image. But, if we were [like removing the uncompressed
@@ -3034,8 +2929,7 @@ public class PackageManagerService extends IPackageManager.Stub
                                 final File codePath = new File(pkg.applicationInfo.getCodePath());
                                 scanPackageTracedLI(codePath, 0, scanFlags, 0, null);
                             } catch (PackageManagerException e) {
-                                Slog.e(TAG, "Failed to parse updated, ex-system package: "
-                                        + e.getMessage());
+                                Slog.e(TAG, "Failed to parse updated, ex-system package: " + e.getMessage());
                             }
                         }
 
@@ -3056,92 +2950,46 @@ public class PackageManagerService extends IPackageManager.Stub
                      * the userdata partition actually showed up. If they never
                      * appeared, crawl back and revive the system version.
                      */
+                    //确保期望在userdata分区上显示的所有系统应用程序实际显示
+                    //如果从未出现过，需要回滚以恢复系统版本
                     for (int i = 0; i < mExpectingBetter.size(); i++) {
                         final String packageName = mExpectingBetter.keyAt(i);
                         if (!mPackages.containsKey(packageName)) {
                             final File scanFile = mExpectingBetter.valueAt(i);
 
-                            logCriticalInfo(Log.WARN, "Expected better " + packageName
-                                    + " but never showed up; reverting to system");
+                            logCriticalInfo(Log.WARN, "Expected better " + packageName + " but never showed up; reverting to system");
 
                             final @ParseFlags int reparseFlags;
                             final @ScanFlags int rescanFlags;
                             if (FileUtils.contains(privilegedAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_PRIVILEGED;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRIVILEGED;
                             } else if (FileUtils.contains(systemAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM;
                             } else if (FileUtils.contains(privilegedVendorAppDir, scanFile)
                                     || FileUtils.contains(privilegedOdmAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_VENDOR
-                                                | SCAN_AS_PRIVILEGED;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_VENDOR | SCAN_AS_PRIVILEGED;
                             } else if (FileUtils.contains(vendorAppDir, scanFile)
                                     || FileUtils.contains(odmAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_VENDOR;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_VENDOR;
                             } else if (FileUtils.contains(oemAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_OEM;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_OEM;
                             } else if (FileUtils.contains(privilegedProductAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_PRODUCT
-                                                | SCAN_AS_PRIVILEGED;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT | SCAN_AS_PRIVILEGED;
                             } else if (FileUtils.contains(productAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_PRODUCT;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT;
                             } else if (FileUtils.contains(privilegedProductServicesAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_PRODUCT_SERVICES
-                                                | SCAN_AS_PRIVILEGED;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT_SERVICES | SCAN_AS_PRIVILEGED;
                             } else if (FileUtils.contains(productServicesAppDir, scanFile)) {
-                                reparseFlags =
-                                        mDefParseFlags |
-                                                PackageParser.PARSE_IS_SYSTEM_DIR;
-                                rescanFlags =
-                                        scanFlags
-                                                | SCAN_AS_SYSTEM
-                                                | SCAN_AS_PRODUCT_SERVICES;
+                                reparseFlags = mDefParseFlags | PackageParser.PARSE_IS_SYSTEM_DIR;
+                                rescanFlags = scanFlags | SCAN_AS_SYSTEM | SCAN_AS_PRODUCT_SERVICES;
                             } else {
                                 Slog.e(TAG, "Ignoring unexpected fallback path " + scanFile);
                                 continue;
@@ -3150,6 +2998,7 @@ public class PackageManagerService extends IPackageManager.Stub
                             mSettings.enableSystemPackageLPw(packageName);
 
                             try {
+                                //扫描APK
                                 scanPackageTracedLI(scanFile, reparseFlags, rescanFlags, 0, null);
                             } catch (PackageManagerException e) {
                                 Slog.e(TAG, "Failed to parse original system package: "
@@ -3160,30 +3009,27 @@ public class PackageManagerService extends IPackageManager.Stub
 
                     // Uncompress and install any stubbed system applications.
                     // This must be done last to ensure all stubs are replaced or disabled.
+                    //解压缩并安装任何存根系统应用程序。必须最后执行此操作以确保替换或禁用所有存根
                     installSystemStubPackages(stubSystemApps, scanFlags);
 
-                    final int cachedNonSystemApps = PackageParser.sCachedPackageReadCount.get()
-                            - cachedSystemApps;
+                    final int cachedNonSystemApps = PackageParser.sCachedPackageReadCount.get() - cachedSystemApps;
 
                     final long dataScanTime = SystemClock.uptimeMillis() - systemScanTime - startTime;
                     final int dataPackagesCount = mPackages.size() - systemPackagesCount;
-                    Slog.i(TAG, "Finished scanning non-system apps. Time: " + dataScanTime
-                            + " ms, packageCount: " + dataPackagesCount
-                            + " , timePerPackage: "
-                            + (dataPackagesCount == 0 ? 0 : dataScanTime / dataPackagesCount)
-                            + " , cached: " + cachedNonSystemApps);
+                    Slog.i(TAG, "Finished scanning non-system apps. Time: " + dataScanTime + " ms, packageCount: " + dataPackagesCount + " , timePerPackage: " + (dataPackagesCount == 0 ? 0 : dataScanTime / dataPackagesCount) + " , cached: " + cachedNonSystemApps);
                     if (mIsUpgrade && dataPackagesCount > 0) {
-                        MetricsLogger.histogram(null, "ota_package_manager_data_app_avg_scan_time",
-                                ((int) dataScanTime) / dataPackagesCount);
+                        MetricsLogger.histogram(null, "ota_package_manager_data_app_avg_scan_time", ((int) dataScanTime) / dataPackagesCount);
                     }
                 }
                 mExpectingBetter.clear();
 
                 // Resolve the storage manager.
+                //获取storagemanager包名
                 mStorageManagerPackage = getStorageManagerPackageName();
 
                 // Resolve protected action filters. Only the setup wizard is allowed to
                 // have a high priority filter for these actions.
+                //解决受保护的action过滤器。只允许setupwizard（开机向导）为这些action 设置高优先级过滤器
                 mSetupWizardPackage = getSetupWizardPackageName();
                 mComponentResolver.fixProtectedFilterPriorities();
 
@@ -3191,13 +3037,13 @@ public class PackageManagerService extends IPackageManager.Stub
 
                 mWellbeingPackage = getWellbeingPackageName();
                 mDocumenterPackage = getDocumenterPackageName();
-                mConfiguratorPackage =
-                        mContext.getString(R.string.config_deviceConfiguratorPackageName);
+                mConfiguratorPackage = mContext.getString(R.string.config_deviceConfiguratorPackageName);
                 mAppPredictionServicePackage = getAppPredictionServicePackageName();
                 mIncidentReportApproverPackage = getIncidentReportApproverPackageName();
 
                 // Now that we know all of the shared libraries, update all clients to have
                 // the correct library paths.
+                //更新客户端以确保持有正确的共享库路径
                 updateAllSharedLibrariesLocked(null, Collections.unmodifiableMap(mPackages));
 
                 for (SharedUserSetting setting : mSettings.getAllSharedUsersLPw()) {
@@ -3224,13 +3070,14 @@ public class PackageManagerService extends IPackageManager.Stub
                 // Now that we know all the packages we are keeping,
                 // read and update their last usage times.
                 mPackageUsage.read(mPackages);
+                //读取并更新要保留的package的上次使用时间
                 mCompilerStats.read();
 
-                EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_SCAN_END,
-                        SystemClock.uptimeMillis());
-                Slog.i(TAG, "Time to scan packages: "
-                        + ((SystemClock.uptimeMillis() - startTime) / 1000f)
-                        + " seconds");
+                /////////////////////////////////////////////////////////////////////////////////
+                //阶段4：BOOT_PROGRESS_PMS_SCAN_END
+                /////////////////////////////////////////////////////////////////////////////////
+                EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_SCAN_END, SystemClock.uptimeMillis());
+                Slog.i(TAG, "Time to scan packages: " + ((SystemClock.uptimeMillis() - startTime) / 1000f) + " seconds");
 
                 // If the platform SDK has changed since the last time we booted,
                 // we need to re-grant app permission to catch any new ones that
@@ -3238,19 +3085,19 @@ public class PackageManagerService extends IPackageManager.Stub
                 // cases get permissions that the user didn't initially explicitly
                 // allow...  it would be nice to have some better way to handle
                 // this situation.
+                //【同学们注意】(1)sdk版本变更，更新权限；
+                //如果自上次启动以来，平台SDK已改变，则需要重新授予应用程序权限以捕获出现的任何新权限
                 final boolean sdkUpdated = (ver.sdkVersion != mSdkVersion);
                 if (sdkUpdated) {
-                    Slog.i(TAG, "Platform changed from " + ver.sdkVersion + " to "
-                            + mSdkVersion + "; regranting permissions for internal storage");
+                    Slog.i(TAG, "Platform changed from " + ver.sdkVersion + " to " + mSdkVersion + "; regranting permissions for internal storage");
                 }
-                mPermissionManager.updateAllPermissions(
-                        StorageManager.UUID_PRIVATE_INTERNAL, sdkUpdated, mPackages.values(),
-                        mPermissionCallback);
+                mPermissionManager.updateAllPermissions(StorageManager.UUID_PRIVATE_INTERNAL, sdkUpdated, mPackages.values(), mPermissionCallback);
                 ver.sdkVersion = mSdkVersion;
 
                 // If this is the first boot or an update from pre-M, and it is a normal
                 // boot, then we need to initialize the default preferred apps across
                 // all defined users.
+                //如果这是第一次启动或来自AndroidM之前的版本的升级，并且它是正常启动，那需要在所有已定义的用户中初始化默认的首选应用程序
                 if (!onlyCore && (mPromoteSystemApps || mFirstBoot)) {
                     for (UserInfo user : sUserManager.getUsers(true)) {
                         mSettings.applyDefaultPreferredAppsLPw(user.id);
@@ -3262,21 +3109,18 @@ public class PackageManagerService extends IPackageManager.Stub
                 // since core system apps like SettingsProvider and SystemUI
                 // can't wait for user to start
                 final int storageFlags;
+                //在启动期间确实为系统用户准备存储，因为像SettingsProvider和SystemUI这样的核心系统应用程序无法等待用户启动finalintstorageFlags;
                 if (StorageManager.isFileEncryptedNativeOrEmulated()) {
                     storageFlags = StorageManager.FLAG_STORAGE_DE;
                 } else {
                     storageFlags = StorageManager.FLAG_STORAGE_DE | StorageManager.FLAG_STORAGE_CE;
                 }
-                List<String> deferPackages = reconcileAppsDataLI(StorageManager.UUID_PRIVATE_INTERNAL,
-                        UserHandle.USER_SYSTEM, storageFlags, true /* migrateAppData */,
-                        true /* onlyCoreApps */);
+                List<String> deferPackages = reconcileAppsDataLI(StorageManager.UUID_PRIVATE_INTERNAL, UserHandle.USER_SYSTEM, storageFlags, true /* migrateAppData */, true /* onlyCoreApps */);
                 mPrepareAppDataFuture = SystemServerInitThreadPool.get().submit(() -> {
-                    TimingsTraceLog traceLog = new TimingsTraceLog("SystemServerTimingAsync",
-                            Trace.TRACE_TAG_PACKAGE_MANAGER);
+                    TimingsTraceLog traceLog = new TimingsTraceLog("SystemServerTimingAsync", Trace.TRACE_TAG_PACKAGE_MANAGER);
                     traceLog.traceBegin("AppDataFixup");
                     try {
-                        mInstaller.fixupAppData(StorageManager.UUID_PRIVATE_INTERNAL,
-                                StorageManager.FLAG_STORAGE_DE | StorageManager.FLAG_STORAGE_CE);
+                        mInstaller.fixupAppData(StorageManager.UUID_PRIVATE_INTERNAL, StorageManager.FLAG_STORAGE_DE | StorageManager.FLAG_STORAGE_CE);
                     } catch (InstallerException e) {
                         Slog.w(TAG, "Trouble fixing GIDs", e);
                     }
@@ -3312,15 +3156,15 @@ public class PackageManagerService extends IPackageManager.Stub
                 // Note that we do *not* clear the application profiles. These remain valid
                 // across OTAs and are used to drive profile verification (post OTA) and
                 // profile compilation (without waiting to collect a fresh set of profiles).
+                //【同学们注意】(2)OTA升级后首次启动，清除不必要的缓存数据；
+                //如果是在OTA之后首次启动，并且正常启动，那需要清除代码缓存目录，但不清除应用程序配置文件
                 if (mIsUpgrade && !onlyCore) {
                     Slog.i(TAG, "Build fingerprint changed; clearing code caches");
                     for (int i = 0; i < mSettings.mPackages.size(); i++) {
                         final PackageSetting ps = mSettings.mPackages.valueAt(i);
                         if (Objects.equals(StorageManager.UUID_PRIVATE_INTERNAL, ps.volumeUuid)) {
                             // No apps are running this early, so no need to freeze
-                            clearAppDataLIF(ps.pkg, UserHandle.USER_ALL,
-                                    FLAG_STORAGE_DE | FLAG_STORAGE_CE | FLAG_STORAGE_EXTERNAL
-                                            | Installer.FLAG_CLEAR_CODE_CACHE_ONLY);
+                            clearAppDataLIF(ps.pkg, UserHandle.USER_ALL, FLAG_STORAGE_DE | FLAG_STORAGE_CE | FLAG_STORAGE_EXTERNAL | Installer.FLAG_CLEAR_CODE_CACHE_ONLY);
                         }
                     }
                     ver.fingerprint = Build.FINGERPRINT;
@@ -3328,6 +3172,7 @@ public class PackageManagerService extends IPackageManager.Stub
 
                 // Grandfather existing (installed before Q) non-system apps to hide
                 // their icons in launcher.
+                //安装Android-Q前的非系统应用程序在Launcher中隐藏他们的图标
                 if (!onlyCore && mIsPreQUpgrade) {
                     Slog.i(TAG, "Whitelisting all existing apps to hide their icons");
                     int size = mSettings.mPackages.size();
@@ -3336,42 +3181,45 @@ public class PackageManagerService extends IPackageManager.Stub
                         if ((ps.pkgFlags & ApplicationInfo.FLAG_SYSTEM) != 0) {
                             continue;
                         }
-                        ps.disableComponentLPw(PackageManager.APP_DETAILS_ACTIVITY_CLASS_NAME,
-                                UserHandle.USER_SYSTEM);
+                        ps.disableComponentLPw(PackageManager.APP_DETAILS_ACTIVITY_CLASS_NAME, UserHandle.USER_SYSTEM);
                     }
                 }
 
                 // clear only after permissions and other defaults have been updated
+                //【同学们注意】(3)权限等默认项更新完后，清理相关数据；
+                // 仅在权限或其它默认配置更新后清除
                 mExistingSystemPackages.clear();
                 mPromoteSystemApps = false;
 
                 // All the changes are done during package scanning.
+                //所有变更均在扫描过程中完成
                 ver.databaseVersion = Settings.CURRENT_DATABASE_VERSION;
 
                 // can downgrade to reader
                 Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "write settings");
+                //【同学们注意】(4)更新package.xml
+                //降级去读取
                 mSettings.writeLPr();
                 Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
-                EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_READY,
-                        SystemClock.uptimeMillis());
+
+                /////////////////////////////////////////////////////////////////////////////////
+                //阶段5：BOOT_PROGRESS_PMS_READY
+                /////////////////////////////////////////////////////////////////////////////////
+                EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_READY, SystemClock.uptimeMillis());
 
                 if (!mOnlyCore) {
+                    //PermissionController主持缺陷许可证的授予和角色管理，所以这是核心系统的一个关键部分。
                     mRequiredVerifierPackage = getRequiredButNotReallyRequiredVerifierLPr();
                     mRequiredInstallerPackage = getRequiredInstallerLPr();
                     mRequiredUninstallerPackage = getRequiredUninstallerLPr();
                     mIntentFilterVerifierComponent = getIntentFilterVerifierComponentNameLPr();
                     if (mIntentFilterVerifierComponent != null) {
-                        mIntentFilterVerifier = new IntentVerifierProxy(mContext,
-                                mIntentFilterVerifierComponent);
+                        mIntentFilterVerifier = new IntentVerifierProxy(mContext, mIntentFilterVerifierComponent);
                     } else {
                         mIntentFilterVerifier = null;
                     }
-                    mServicesSystemSharedLibraryPackageName = getRequiredSharedLibraryLPr(
-                            PackageManager.SYSTEM_SHARED_LIBRARY_SERVICES,
-                            SharedLibraryInfo.VERSION_UNDEFINED);
-                    mSharedSystemSharedLibraryPackageName = getRequiredSharedLibraryLPr(
-                            PackageManager.SYSTEM_SHARED_LIBRARY_SHARED,
-                            SharedLibraryInfo.VERSION_UNDEFINED);
+                    mServicesSystemSharedLibraryPackageName = getRequiredSharedLibraryLPr(PackageManager.SYSTEM_SHARED_LIBRARY_SERVICES, SharedLibraryInfo.VERSION_UNDEFINED);
+                    mSharedSystemSharedLibraryPackageName = getRequiredSharedLibraryLPr(PackageManager.SYSTEM_SHARED_LIBRARY_SHARED, SharedLibraryInfo.VERSION_UNDEFINED);
                 } else {
                     mRequiredVerifierPackage = null;
                     mRequiredInstallerPackage = null;
@@ -3401,17 +3249,13 @@ public class PackageManagerService extends IPackageManager.Stub
                 }
 
                 mInstallerService = new PackageInstallerService(context, this, mApexManager);
-                final Pair<ComponentName, String> instantAppResolverComponent =
-                        getInstantAppResolverLPr();
+                final Pair<ComponentName, String> instantAppResolverComponent = getInstantAppResolverLPr();
                 if (instantAppResolverComponent != null) {
                     if (DEBUG_INSTANT) {
                         Slog.d(TAG, "Set ephemeral resolver: " + instantAppResolverComponent);
                     }
-                    mInstantAppResolverConnection = new InstantAppResolverConnection(
-                            mContext, instantAppResolverComponent.first,
-                            instantAppResolverComponent.second);
-                    mInstantAppResolverSettingsComponent =
-                            getInstantAppResolverSettingsLPr(instantAppResolverComponent.first);
+                    mInstantAppResolverConnection = new InstantAppResolverConnection(mContext, instantAppResolverComponent.first, instantAppResolverComponent.second);
+                    mInstantAppResolverSettingsComponent = getInstantAppResolverSettingsLPr(instantAppResolverComponent.first);
                 } else {
                     mInstantAppResolverConnection = null;
                     mInstantAppResolverSettingsComponent = null;
@@ -3426,14 +3270,17 @@ public class PackageManagerService extends IPackageManager.Stub
                 // The usage file is expected to be small so loading and verifying it
                 // should take a fairly small time compare to the other activities (e.g. package
                 // scanning).
+                //阅读并更新dex文件的用法
+                //在PMinit结束时执行此操作，以便所有程序包都已协调其数据目录
+                //此时知道了包的代码路径，因此可以验证磁盘文件并构建内部缓存
+                //使用文件预计很小，因此与其他活动（例如包扫描）相比，加载和验证它应该花费相当小的时间
                 final Map<Integer, List<PackageInfo>> userPackages = new HashMap<>();
                 for (int userId : userIds) {
                     userPackages.put(userId, getInstalledPackages(/*flags*/ 0, userId).getList());
                 }
                 mDexManager.load(userPackages);
                 if (mIsUpgrade) {
-                    MetricsLogger.histogram(null, "ota_package_manager_init_time",
-                            (int) (SystemClock.uptimeMillis() - startTime));
+                    MetricsLogger.histogram(null, "ota_package_manager_init_time", (int) (SystemClock.uptimeMillis() - startTime));
                 }
             } // synchronized (mPackages)
         } // synchronized (mInstallLock)
@@ -3444,7 +3291,10 @@ public class PackageManagerService extends IPackageManager.Stub
         // are all flushed.  Not really needed, but keeps things nice and
         // tidy.
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "GC");
+        //【同学们注意】GC回收内存
+        //打开应用之后，及时回收处理
         Runtime.getRuntime().gc();
+        //上面的初始扫描在持有mPackage锁的同时对installd进行了多次调用  mInstaller.setWarnIfHeld(mPackages);
         Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
 
         // The initial scanning above does many calls into installd while
@@ -9131,6 +8981,7 @@ public class PackageManagerService extends IPackageManager.Stub
     private void scanDirTracedLI(File scanDir, final int parseFlags, int scanFlags, long currentTime) {
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "scanDir [" + scanDir.getAbsolutePath() + "]");
         try {
+            // 【同学们注意】会调用此 scanDirLI函数
             scanDirLI(scanDir, parseFlags, scanFlags, currentTime);
         } finally {
             Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
@@ -9145,27 +8996,30 @@ public class PackageManagerService extends IPackageManager.Stub
         }
 
         if (DEBUG_PACKAGE_SCANNING) {
-            Log.d(TAG, "Scanning app dir " + scanDir + " scanFlags=" + scanFlags
-                    + " flags=0x" + Integer.toHexString(parseFlags));
+            Log.d(TAG, "Scanning app dir " + scanDir + " scanFlags=" + scanFlags + " flags=0x" + Integer.toHexString(parseFlags));
         }
-        try (ParallelPackageParser parallelPackageParser = new ParallelPackageParser(
-                mSeparateProcesses, mOnlyCore, mMetrics, mCacheDir,
-                mParallelPackageParserCallback)) {
+        // parallelPackageParser是一个队列，收集系统 apk 文件，
+        // 然后从这个队列里面一个个取出 apk ，调用 PackageParser 解析
+        try (ParallelPackageParser parallelPackageParser = new ParallelPackageParser(mSeparateProcesses, mOnlyCore, mMetrics, mCacheDir, mParallelPackageParserCallback)) {
             // Submit files for parsing in parallel
             int fileCount = 0;
             for (File file : files) {
-                final boolean isPackage = (isApkFile(file) || file.isDirectory())
-                        && !PackageInstallerService.isStageName(file.getName());
+                // 是Apk文件，或者是目录
+                final boolean isPackage = (isApkFile(file) || file.isDirectory()) && !PackageInstallerService.isStageName(file.getName());
+                // 过滤掉非 apk 文件，如果不是则跳过继续扫描
                 if (!isPackage) {
                     // Ignore entries which are not packages
                     continue;
                 }
+                // 把APK信息存入parallelPackageParser中的对象mQueue，PackageParser()函数赋给了队列中的pkg成员
+                // 【同学们注意】 这里的 submit 函数 很重要，下面就会分析此函数
                 parallelPackageParser.submit(file, parseFlags);
                 fileCount++;
             }
 
             // Process results one by one
             for (; fileCount > 0; fileCount--) {
+                // 从parallelPackageParser中取出队列apk的信息ParallelPackageParser.submit :把扫描路径中的APK等内容，放入队列mQueue，
                 ParallelPackageParser.ParseResult parseResult = parallelPackageParser.take();
                 Throwable throwable = parseResult.throwable;
                 int errorCode = PackageManager.INSTALL_SUCCEEDED;
@@ -9177,27 +9031,25 @@ public class PackageManagerService extends IPackageManager.Stub
                         renameStaticSharedLibraryPackage(parseResult.pkg);
                     }
                     try {
-                        scanPackageChildLI(parseResult.pkg, parseFlags, scanFlags,
-                                currentTime, null);
+                        //调用 scanPackageChildLI 方法扫描一个特定的 apk 文件
+                        // 该类的实例代表一个 APK 文件，所以它就是和 apk 文件对应的数据结构。
+                        scanPackageChildLI(parseResult.pkg, parseFlags, scanFlags, currentTime, null);
                     } catch (PackageManagerException e) {
                         errorCode = e.error;
                         Slog.w(TAG, "Failed to scan " + parseResult.scanFile + ": " + e.getMessage());
                     }
                 } else if (throwable instanceof PackageParser.PackageParserException) {
-                    PackageParser.PackageParserException e = (PackageParser.PackageParserException)
-                            throwable;
+                    PackageParser.PackageParserException e = (PackageParser.PackageParserException) throwable;
                     errorCode = e.error;
                     Slog.w(TAG, "Failed to parse " + parseResult.scanFile + ": " + e.getMessage());
                 } else {
-                    throw new IllegalStateException("Unexpected exception occurred while parsing "
-                            + parseResult.scanFile, throwable);
+                    throw new IllegalStateException("Unexpected exception occurred while parsing " + parseResult.scanFile, throwable);
                 }
 
                 // Delete invalid userdata apps
-                if ((scanFlags & SCAN_AS_SYSTEM) == 0 &&
-                        errorCode != PackageManager.INSTALL_SUCCEEDED) {
-                    logCriticalInfo(Log.WARN,
-                            "Deleting invalid package at " + parseResult.scanFile);
+                //如果是非系统 apk 并且解析失败
+                if ((scanFlags & SCAN_AS_SYSTEM) == 0 && errorCode != PackageManager.INSTALL_SUCCEEDED) {
+                    logCriticalInfo(Log.WARN, "Deleting invalid package at " + parseResult.scanFile);
                     removeCodePathLI(parseResult.scanFile);
                 }
             }
@@ -10845,6 +10697,7 @@ public class PackageManagerService extends IPackageManager.Stub
         }
 
         final int childCount = (pkg.childPackages != null) ? pkg.childPackages.size() : 0;
+        // 环节二.Scan 扫描：考虑到prepare中收集的上下文，询问已分析的包。
         final List<ScanResult> scanResults = new ArrayList<>(1 + childCount);
         try {
             // Scan the parent
@@ -10852,8 +10705,7 @@ public class PackageManagerService extends IPackageManager.Stub
             // Scan the children
             for (int i = 0; i < childCount; i++) {
                 PackageParser.Package childPkg = pkg.childPackages.get(i);
-                scanResults.add(scanPackageNewLI(childPkg, parseFlags,
-                        scanFlags, currentTime, user));
+                scanResults.add(scanPackageNewLI(childPkg, parseFlags, scanFlags, currentTime, user));
             }
         } finally {
             Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
@@ -13324,21 +13176,20 @@ public class PackageManagerService extends IPackageManager.Stub
 
     void installStage(ActiveInstallSession activeInstallSession) {
         if (DEBUG_INSTANT) {
-            if ((activeInstallSession.getSessionParams().installFlags
-                    & PackageManager.INSTALL_INSTANT_APP) != 0) {
+            if ((activeInstallSession.getSessionParams().installFlags & PackageManager.INSTALL_INSTANT_APP) != 0) {
                 Slog.d(TAG, "Ephemeral install of " + activeInstallSession.getPackageName());
             }
         }
+        // 第一步.创建了类型为INIT_COPY的消息
         final Message msg = mHandler.obtainMessage(INIT_COPY);
+        // 第二步.创建InstallParams，它对应于包的安装数据
         final InstallParams params = new InstallParams(activeInstallSession);
         params.setTraceMethod("installStage").setTraceCookie(System.identityHashCode(params));
         msg.obj = params;
 
-        Trace.asyncTraceBegin(TRACE_TAG_PACKAGE_MANAGER, "installStage",
-                System.identityHashCode(msg.obj));
-        Trace.asyncTraceBegin(TRACE_TAG_PACKAGE_MANAGER, "queueInstall",
-                System.identityHashCode(msg.obj));
-
+        Trace.asyncTraceBegin(TRACE_TAG_PACKAGE_MANAGER, "installStage", System.identityHashCode(msg.obj));
+        Trace.asyncTraceBegin(TRACE_TAG_PACKAGE_MANAGER, "queueInstall", System.identityHashCode(msg.obj));
+        // 第三步.将InstallParams通过消息发送出去。
         mHandler.sendMessage(msg);
     }
 
@@ -14758,7 +14609,9 @@ public class PackageManagerService extends IPackageManager.Stub
         if (args.mMultiPackageInstallParams != null) {
             args.mMultiPackageInstallParams.tryProcessInstallRequest(args, currentStatus);
         } else {
+            //1.设置安装参数
             PackageInstalledInfo res = createPackageInstalledInfo(currentStatus);
+            //2.创建一个新线程，处理安装参数，进行安装
             processInstallRequestsAsync(
                     res.returnCode == PackageManager.INSTALL_SUCCEEDED,
                     Collections.singletonList(new InstallRequest(args, res)));
@@ -14766,19 +14619,21 @@ public class PackageManagerService extends IPackageManager.Stub
     }
 
     // Queue up an async operation since the package installation may take a little while.
-    private void processInstallRequestsAsync(boolean success,
-                                             List<InstallRequest> installRequests) {
+    private void processInstallRequestsAsync(boolean success, List<InstallRequest> installRequests) {
         mHandler.post(() -> {
             if (success) {
                 for (InstallRequest request : installRequests) {
+                    //1.如果之前安装失败，清除无用信息
                     request.args.doPreInstall(request.installResult.returnCode);
                 }
                 synchronized (mInstallLock) {
+                    //2. installPackagesTracedLI 是安装过程的核心方法，然后调用installPackagesLI 进行安装。
+                    // 【同学们注意】下面会分析此函数 installPackagesTracedLI
                     installPackagesTracedLI(installRequests);
                 }
                 for (InstallRequest request : installRequests) {
-                    request.args.doPostInstall(
-                            request.installResult.returnCode, request.installResult.uid);
+                    //3.如果之前安装失败，清除无用信息
+                    request.args.doPostInstall(request.installResult.returnCode, request.installResult.uid);
                 }
             }
             for (InstallRequest request : installRequests) {
@@ -15015,7 +14870,7 @@ public class PackageManagerService extends IPackageManager.Stub
         final void startCopy() {
             if (DEBUG_INSTALL) Slog.i(TAG, "startCopy " + mUser + ": " + this);
             handleStartCopy();
-            handleReturnCode();
+            handleReturnCode(); // 调用到下面 handleReturnCode
         }
 
         abstract void handleStartCopy();
@@ -15177,7 +15032,7 @@ public class PackageManagerService extends IPackageManager.Stub
             for (InstallParams params : mChildParams) {
                 params.handleReturnCode();
                 if (params.mRet != INSTALL_SUCCEEDED) {
-                    mRet = params.mRet;
+                    mRet = params.mRet;// 【同学们注意】 下面会说到 copyApk
                 }
             }
         }
@@ -17175,8 +17030,7 @@ public class PackageManagerService extends IPackageManager.Stub
         final Map<String, PackageInstalledInfo> installResults = new ArrayMap<>(requests.size());
         final Map<String, PrepareResult> prepareResults = new ArrayMap<>(requests.size());
         final Map<String, VersionInfo> versionInfos = new ArrayMap<>(requests.size());
-        final Map<String, PackageSetting> lastStaticSharedLibSettings =
-                new ArrayMap<>(requests.size());
+        final Map<String, PackageSetting> lastStaticSharedLibSettings = new ArrayMap<>(requests.size());
         final Map<String, Boolean> createdAppId = new ArrayMap<>(requests.size());
         boolean success = false;
         try {
@@ -17187,10 +17041,10 @@ public class PackageManagerService extends IPackageManager.Stub
                 final PrepareResult prepareResult;
                 try {
                     Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "preparePackage");
+                    // 环节一.Prepare 准备：分析任何当前安装状态，分析包并对其进行初始验证。
                     prepareResult = preparePackageLI(request.args, request.installResult);
                 } catch (PrepareFailure prepareFailure) {
-                    request.installResult.setError(prepareFailure.error,
-                            prepareFailure.getMessage());
+                    request.installResult.setError(prepareFailure.error, prepareFailure.getMessage());
                     request.installResult.origPackage = prepareFailure.conflictingPackage;
                     request.installResult.origPermission = prepareFailure.conflictingPermission;
                     return;
@@ -17218,14 +17072,11 @@ public class PackageManagerService extends IPackageManager.Stub
                             return;
                         }
                         createdAppId.put(packageName, optimisticallyRegisterAppId(result));
-                        versionInfos.put(result.pkgSetting.pkg.packageName,
-                                getSettingsVersionForPackage(result.pkgSetting.pkg));
+                        versionInfos.put(result.pkgSetting.pkg.packageName, getSettingsVersionForPackage(result.pkgSetting.pkg));
                         if (result.staticSharedLibraryInfo != null) {
-                            final PackageSetting sharedLibLatestVersionSetting =
-                                    getSharedLibLatestVersionSetting(result);
+                            final PackageSetting sharedLibLatestVersionSetting = getSharedLibLatestVersionSetting(result);
                             if (sharedLibLatestVersionSetting != null) {
-                                lastStaticSharedLibSettings.put(result.pkgSetting.pkg.packageName,
-                                        sharedLibLatestVersionSetting);
+                                lastStaticSharedLibSettings.put(result.pkgSetting.pkg.packageName, sharedLibLatestVersionSetting);
                             }
                         }
                     }
@@ -17234,6 +17085,7 @@ public class PackageManagerService extends IPackageManager.Stub
                     return;
                 }
             }
+            // 环节三.Reconcile 调和：在彼此的上下文和当前系统状态中验证扫描的包，以确保安装成功。
             ReconcileRequest reconcileRequest = new ReconcileRequest(preparedScans, installArgs,
                     installResults,
                     prepareResults,
@@ -17257,8 +17109,8 @@ public class PackageManagerService extends IPackageManager.Stub
                 }
                 try {
                     Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "commitPackages");
-                    commitRequest = new CommitRequest(reconciledPackages,
-                            sUserManager.getUserIds());
+                    commitRequest = new CommitRequest(reconciledPackages, sUserManager.getUserIds());
+                    // 环节四.Commit 提交：提交所有扫描的包并更新系统状态。这是安装流中唯一可以修改系统状态的地方，必须在此阶段之前确定所有可预测的错误。
                     commitPackagesLocked(commitRequest);
                     success = true;
                 } finally {
@@ -17270,6 +17122,7 @@ public class PackageManagerService extends IPackageManager.Stub
                     Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
                 }
             }
+            // 环节五.完成APK的安装【同学们注意：下面会分析这个操作】
             executePostCommitSteps(commitRequest);
         } finally {
             if (!success) {
@@ -17306,7 +17159,9 @@ public class PackageManagerService extends IPackageManager.Stub
                     & PackageManagerService.SCAN_AS_INSTANT_APP) != 0);
             final PackageParser.Package pkg = reconciledPkg.pkgSetting.pkg;
             final String packageName = pkg.packageName;
+            //1)进行安装
             prepareAppDataAfterInstallLIF(pkg);
+            //2)如果需要替换安装，则需要清楚原有的APP数据
             if (reconciledPkg.prepareResult.clearCodeCache) {
                 clearAppDataLIF(pkg, UserHandle.USER_ALL, FLAG_STORAGE_DE | FLAG_STORAGE_CE
                         | FLAG_STORAGE_EXTERNAL | Installer.FLAG_CLEAR_CODE_CACHE_ONLY);
@@ -17319,6 +17174,7 @@ public class PackageManagerService extends IPackageManager.Stub
             // Prepare the application profiles for the new code paths.
             // This needs to be done before invoking dexopt so that any install-time profile
             // can be used for optimizations.
+            //3)为新的代码路径准备应用程序配置文件。这需要在调用dexopt之前完成，以便任何安装时配置文件都可以用于优化。
             mArtManagerService.prepareAppProfiles(
                     pkg,
                     resolveUserIds(reconciledPkg.installArgs.user.getIdentifier()),
@@ -17343,10 +17199,9 @@ public class PackageManagerService extends IPackageManager.Stub
             // continuous progress to the useur instead of mysteriously blocking somewhere in the
             // middle of running an instant app. The default behaviour can be overridden
             // via gservices.
-            final boolean performDexopt =
-                    (!instantApp || Global.getInt(mContext.getContentResolver(),
-                            Global.INSTANT_APP_DEXOPT_ENABLED, 0) != 0)
-                            && ((pkg.applicationInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0);
+            final boolean performDexopt = (!instantApp || Global.getInt(mContext.getContentResolver(),
+                    Global.INSTANT_APP_DEXOPT_ENABLED, 0) != 0)
+                    && ((pkg.applicationInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0);
 
             if (performDexopt) {
                 // Compile the layout resources.
@@ -17365,6 +17220,7 @@ public class PackageManagerService extends IPackageManager.Stub
                         REASON_INSTALL,
                         DexoptOptions.DEXOPT_BOOT_COMPLETE
                                 | DexoptOptions.DEXOPT_INSTALL_WITH_DEX_METADATA_FILE);
+                //4)执行dex优化
                 mPackageDexOptimizer.performDexOpt(pkg,
                         null /* instructionSets */,
                         getOrCreateCompilerPackageStats(pkg),
@@ -18447,8 +18303,7 @@ public class PackageManagerService extends IPackageManager.Stub
     }
 
     private void deleteTempPackageFiles() {
-        final FilenameFilter filter =
-                (dir, name) -> name.startsWith("vmdl") && name.endsWith(".tmp");
+        final FilenameFilter filter = (dir, name) -> name.startsWith("vmdl") && name.endsWith(".tmp");
     }
 
     @Override
@@ -22880,6 +22735,8 @@ public class PackageManagerService extends IPackageManager.Stub
         }
 
         synchronized (mPackages) {
+            //【同学们注意】(1)sdk版本变更，更新权限；
+            //如果自上次启动以来，平台SDK已改变，则需要重新授予应用程序权限以捕获出现的任何新权限
             final boolean sdkUpdated = (ver.sdkVersion != mSdkVersion);
             if (sdkUpdated) {
                 logCriticalInfo(Log.INFO, "Platform changed from " + ver.sdkVersion + " to "
@@ -23231,8 +23088,7 @@ public class PackageManagerService extends IPackageManager.Stub
 
     private void prepareAppDataLeafLIF(PackageParser.Package pkg, int userId, int flags) {
         if (DEBUG_APP_DATA) {
-            Slog.v(TAG, "prepareAppData for " + pkg.packageName + " u" + userId + " 0x"
-                    + Integer.toHexString(flags));
+            Slog.v(TAG, "prepareAppData for " + pkg.packageName + " u" + userId + " 0x" + Integer.toHexString(flags));
         }
 
         final PackageSetting ps;
@@ -23256,16 +23112,14 @@ public class PackageManagerService extends IPackageManager.Stub
         final String seInfo = app.seInfo + (app.seInfoUser != null ? app.seInfoUser : "");
         long ceDataInode = -1;
         try {
-            ceDataInode = mInstaller.createAppData(volumeUuid, packageName, userId, flags,
-                    appId, seInfo, app.targetSdkVersion);
+            // 调用Installd守护进程的入口
+            ceDataInode = mInstaller.createAppData(volumeUuid, packageName, userId, flags, appId, seInfo, app.targetSdkVersion);
         } catch (InstallerException e) {
             if (app.isSystemApp()) {
-                logCriticalInfo(Log.ERROR, "Failed to create app data for " + packageName
-                        + ", but trying to recover: " + e);
+                logCriticalInfo(Log.ERROR, "Failed to create app data for " + packageName + ", but trying to recover: " + e);
                 destroyAppDataLeafLIF(pkg, userId, flags);
                 try {
-                    ceDataInode = mInstaller.createAppData(volumeUuid, packageName, userId, flags,
-                            appId, seInfo, app.targetSdkVersion);
+                    ceDataInode = mInstaller.createAppData(volumeUuid, packageName, userId, flags, appId, seInfo, app.targetSdkVersion);
                     logCriticalInfo(Log.DEBUG, "Recovery succeeded!");
                 } catch (InstallerException e2) {
                     logCriticalInfo(Log.DEBUG, "Recovery failed!");
